@@ -14,8 +14,8 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
 
 # --- PROMPTS ---
-# Note: I added "VERTICAL IMAGE" forcefully here to fix the aspect ratio issue
-USER_GEMINI_PROMPT = "Recreate this character in a full body standing pose, looking happy. The image MUST be VERTICAL (9:16 ratio). High quality, 3D render style, clean background."
+# Hum prompt mein hi chilla kar bolenge ki 9:16 chahiye
+USER_GEMINI_PROMPT = "Recreate this character in a full body standing pose. IMPORTANT: The image MUST be VERTICAL (9:16 aspect ratio) for mobile phone wallpaper. High quality, 3D render style, clean background."
 
 USER_VIDEO_PROMPT = "Gentle movement, blinking eyes, breathing motion, high quality animation."
 
@@ -37,27 +37,38 @@ genai.configure(api_key=GEMINI_KEY)
 def search_random_character():
     query = random.choice(CARTOON_LIST)
     print(f"🔍 Searching for: {query}...")
-    with DDGS() as ddgs:
-        results = list(ddgs.images(query, max_results=1))
-    
-    if results:
-        image_url = results[0]['image']
-        print(f"✅ Found Image URL: {image_url}")
-        return image_url
-    else:
-        raise Exception("Could not find any image on search.")
+    try:
+        # 'ddgs' library update ke baad syntax thoda change ho sakta hai, 
+        # isliye hum safe tarika use kar rahe hain
+        with DDGS() as ddgs:
+            results = list(ddgs.images(query, max_results=1))
+        
+        if results:
+            image_url = results[0]['image']
+            print(f"✅ Found Image URL: {image_url}")
+            return image_url
+        else:
+            # Fallback agar search fail ho jaye
+            print("⚠️ Search failed, using backup image.")
+            return "https://cdn.pixabay.com/photo/2020/05/08/02/55/cartoon-5143714_1280.png"
+    except Exception as e:
+        print(f"⚠️ Search Error: {e}, using backup image.")
+        return "https://cdn.pixabay.com/photo/2020/05/08/02/55/cartoon-5143714_1280.png"
 
 def download_image(url, filename="input.jpg"):
     print(f"⬇️ Downloading Image...")
     headers = {'User-Agent': 'Mozilla/5.0'}
-    response = requests.get(url, headers=headers, timeout=10)
-    if response.status_code == 200:
-        with open(filename, 'wb') as f:
-            f.write(response.content)
-        return filename
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            with open(filename, 'wb') as f:
+                f.write(response.content)
+            return filename
+    except:
+        pass
     raise Exception("Failed to download image.")
 
-# --- STEP 2: GEMINI (FIXED) ---
+# --- STEP 2: GEMINI (SIMPLIFIED - NO CONFIG) ---
 def gemini_process(input_path):
     print("🤖 Gemini: Analyzing & Regenerating...")
     imagen_model = genai.GenerativeModel("imagen-3.0-generate-001")
@@ -65,20 +76,19 @@ def gemini_process(input_path):
     myfile = genai.upload_file(input_path)
     full_prompt = f"Based on the character in this image {myfile.uri}, {USER_GEMINI_PROMPT}"
     
-    # --- ERROR FIX IS HERE ---
-    # We removed 'aspect_ratio' from GenerationConfig because it caused the crash.
-    # We rely on the text prompt now.
-    result = imagen_model.generate_content(
-        full_prompt,
-        generation_config=genai.types.GenerationConfig(
-            number_of_images=1
-        )
-    )
+    # --- ERROR FIX ---
+    # Maine 'generation_config' poori tarah hata diya hai.
+    # Ab library crash nahi karegi.
+    result = imagen_model.generate_content(full_prompt)
     
     output_file = "gemini_output.png"
-    result.parts[0].save(output_file)
-    print(f"✅ Generated Image: {output_file}")
-    return output_file
+    # Result check karte hain
+    if result.parts:
+        result.parts[0].save(output_file)
+        print(f"✅ Generated Image: {output_file}")
+        return output_file
+    else:
+        raise Exception("Gemini generated no image. Prompt blocked or model busy.")
 
 # --- STEP 3: VIDEO ---
 def make_video_hf(image_path):
@@ -118,4 +128,7 @@ if __name__ == "__main__":
         deliver_content(final_video)
     except Exception as e:
         print(f"❌ Error: {e}")
+        # Telegram Error Notification
+        if TELEGRAM_TOKEN:
+             requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage?chat_id={TELEGRAM_CHAT_ID}&text=Bot Error: {e}")
         exit(1)
