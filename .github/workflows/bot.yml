@@ -21,11 +21,10 @@ jobs:
           python-version: '3.10'
 
       - name: Install Dependencies
-        # duckduckgo_search add kiya hai image dhundne ke liye
+        # 'ddgs' naya naam hai search library ka
         run: |
           pip install --upgrade pip
-          pip install google-generativeai gradio_client requests pillow duckduckgo_search
-
+          pip install google-generativeai gradio_client requests pillow duckduckgo-search>=5.0
       - name: Run Main Script
         env:
           # Ye saare Secrets GitHub Settings se connect honge
